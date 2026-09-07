@@ -61,3 +61,45 @@ async def test_suspend_supported(capfd: pytest.CaptureFixture[str]) -> None:
             print("USE THEM IN PEACE.", file=sys.stderr, end="", flush=True)
             assert ("USE THEM TOGETHER.", "USE THEM IN PEACE.") == capfd.readouterr()
         assert calls == {"suspend", "resume", "suspend signal", "resume signal"}
+
+
+async def test_suspend_resumes_on_exception() -> None:
+    """Suspending should resume application mode even if the suspended block raises."""
+
+    calls: list[str] = []
+
+    class HeadlessSuspendDriver(HeadlessDriver):
+        @property
+        def is_headless(self) -> bool:
+            return False
+
+        @property
+        def can_suspend(self) -> bool:
+            return True
+
+        def suspend_application_mode(self) -> None:
+            calls.append("suspend")
+
+        def resume_application_mode(self) -> None:
+            calls.append("resume")
+
+    class SuspendApp(App[None]):
+        def on_suspend(self, _) -> None:
+            calls.append("suspend signal")
+
+        def on_resume(self, _) -> None:
+            calls.append("resume signal")
+
+        def on_mount(self) -> None:
+            self.app_suspend_signal.subscribe(self, self.on_suspend, immediate=True)
+            self.app_resume_signal.subscribe(self, self.on_resume, immediate=True)
+
+    async with SuspendApp(driver_class=HeadlessSuspendDriver).run_test(
+        headless=False
+    ) as pilot:
+        calls.clear()
+        with pytest.raises(ZeroDivisionError), pilot.app.suspend():
+            _ = 1 / 0
+
+        assert "resume" in calls
+        assert "resume signal" in calls
