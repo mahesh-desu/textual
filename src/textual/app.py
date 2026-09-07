@@ -4744,24 +4744,26 @@ class App(Generic[ReturnType], DOMNode):
             # Publish a suspend signal *before* we suspend application mode.
             self._suspend_signal()
             self._driver.suspend_application_mode()
-            # We're going to handle the start of the driver again so mark
-            # this next part as such; the reason for this is that the code
-            # the developer may be running could be in this process, and on
-            # Unix-like systems the user may `action_suspend_process` the
-            # app, and we don't want to have the driver auto-restart
-            # application mode when the application comes back to the
-            # foreground, in this context.
-            with (
-                self._driver.no_automatic_restart(),
-                redirect_stdout(sys.__stdout__),
-                redirect_stderr(sys.__stderr__),
-            ):
-                yield
-            # We're done with the dev's code so resume application mode.
-            self._driver.resume_application_mode()
-            # ...and publish a resume signal.
-            self._resume_signal()
-            self.refresh(layout=True)
+            try:
+                # We're going to handle the start of the driver again so mark
+                # this next part as such; the reason for this is that the code
+                # the developer may be running could be in this process, and on
+                # Unix-like systems the user may `action_suspend_process` the
+                # app, and we don't want to have the driver auto-restart
+                # application mode when the application comes back to the
+                # foreground, in this context.
+                with (
+                    self._driver.no_automatic_restart(),
+                    redirect_stdout(sys.__stdout__),
+                    redirect_stderr(sys.__stderr__),
+                ):
+                    yield
+            finally:
+                # We're done with the dev's code so resume application mode.
+                self._driver.resume_application_mode()
+                # ...and publish a resume signal.
+                self._resume_signal()
+                self.refresh(layout=True)
         else:
             raise SuspendNotSupported(
                 "App.suspend is not supported in this environment."
